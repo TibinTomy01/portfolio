@@ -712,18 +712,19 @@
 
             // soft glow sprites: cool white, blue-white, warm
             function sprite(rgb) {
-                const c = document.createElement('canvas'); c.width = c.height = 64;
-                const g = c.getContext('2d'), grd = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+                const c = document.createElement('canvas'); c.width = c.height = 128;
+                const g = c.getContext('2d'), grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
                 grd.addColorStop(0, 'rgba(255,255,255,1)');
-                grd.addColorStop(0.18, `rgba(${rgb},0.85)`);
-                grd.addColorStop(0.5, `rgba(${rgb},0.18)`);
+                grd.addColorStop(0.12, `rgba(${rgb},0.7)`);
+                grd.addColorStop(0.35, `rgba(${rgb},0.12)`);
                 grd.addColorStop(1, `rgba(${rgb},0)`);
-                g.fillStyle = grd; g.fillRect(0, 0, 64, 64);
+                g.fillStyle = grd; g.fillRect(0, 0, 128, 128);
                 return c;
             }
             const sprites = [sprite('200,225,255'), sprite('255,255,255'), sprite('255,190,160')];
+            const cores = ['#e4efff', '#ffffff', '#ffd9c7'];
 
-            const N = window.innerWidth < 768 ? 900 : 1600;
+            const N = window.innerWidth < 768 ? 1300 : 2600;
             const P = [];
             for (let i = 0; i < N; i++) {
                 const core = Math.random() < 0.14;
@@ -780,7 +781,7 @@
 
                 // bright core glow
                 if (g > 0.02) {
-                    const cr = R * 0.32;
+                    const cr = R * 0.24;
                     const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, cr);
                     grd.addColorStop(0, `rgba(255,255,255,${0.95 * g})`);
                     grd.addColorStop(0.3, `rgba(190,215,255,${0.35 * g})`);
@@ -812,9 +813,18 @@
                     }
 
                     const tw = 0.8 + 0.2 * Math.sin(time * 1.6 + q.ph * 3);
-                    const size = q.s * (2.6 + g * 1.4) * (W < 768 ? 0.85 : 1);
-                    ctx.globalAlpha = q.al * tw * (0.35 + 0.65 * Math.max(intro, 0.3));
-                    ctx.drawImage(sprites[q.k], x - size, y - size, size * 2, size * 2);
+                    const sc = W < 768 ? 0.85 : 1;
+                    const a = q.al * tw * (0.35 + 0.65 * Math.max(intro, 0.3));
+                    // faint halo (small, so it never blurs the star)
+                    const halo = q.s * 2.6 * sc;
+                    ctx.globalAlpha = a * 0.28;
+                    ctx.drawImage(sprites[q.k], x - halo, y - halo, halo * 2, halo * 2);
+                    // crisp, sharp-edged core
+                    ctx.globalAlpha = a;
+                    ctx.fillStyle = cores[q.k];
+                    ctx.beginPath();
+                    ctx.arc(x, y, (0.55 + q.s * 0.42) * sc, 0, 6.2832);
+                    ctx.fill();
                 }
                 ctx.globalAlpha = 1;
 
