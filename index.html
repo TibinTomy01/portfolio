@@ -697,8 +697,9 @@
         navToggle.addEventListener('click', () => navMenu.classList.toggle('active'));
         navMenu.querySelectorAll('a').forEach(a => a.addEventListener('click', () => navMenu.classList.remove('active')));
 
-        /* ---------- Particle galaxy hero ---------- */
+        /* ---------- Particle hero: stars assemble into "Tibin" ---------- */
         (function () {
+            const WORD = 'Tibin';
             const canvas = document.getElementById('galaxy');
             const ctx = canvas.getContext('2d');
             const wordL = document.getElementById('wordL');
@@ -710,7 +711,6 @@
             const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a)); return t * t * (3 - 2 * t); };
             const easeIO = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
-            // soft glow sprites: cool white, blue-white, warm
             function sprite(rgb) {
                 const c = document.createElement('canvas'); c.width = c.height = 128;
                 const g = c.getContext('2d'), grd = g.createRadialGradient(64, 64, 0, 64, 64, 64);
@@ -724,32 +724,65 @@
             const sprites = [sprite('200,225,255'), sprite('255,255,255'), sprite('255,190,160')];
             const cores = ['#e4efff', '#ffffff', '#ffd9c7'];
 
-            const N = window.innerWidth < 768 ? 1300 : 2600;
+            const N = window.innerWidth < 768 ? 1500 : 2800;
             const P = [];
             for (let i = 0; i < N; i++) {
-                const core = Math.random() < 0.14;
-                const rr = core ? Math.pow(Math.random(), 1.6) * 0.16 : 0.1 + Math.pow(Math.random(), 0.75) * 0.9;
-                const arm = i % 2;
                 P.push({
-                    r: rr,                                   // 0..1 of galaxy radius
-                    a: arm * Math.PI + rr * 4.2 + (Math.random() - 0.5) * (core ? 6.3 : 0.55),
-                    jit: (Math.random() - 0.5) * 0.05,
+                    amb: Math.random() < 0.12,               // ambient background star, never joins the word
+                    tx: 0, ty: 0,                            // target offset from centre (set in build)
+                    dl: Math.random() * 0.4,                 // stagger so stars arrive at different moments
                     sx: Math.random(), sy: Math.random(),    // scattered position (0..1 of viewport)
                     ph: Math.random() * 6.28,
-                    s: Math.random() < 0.06 ? 2.2 + Math.random() * 2 : 0.7 + Math.random() * 1.3,
-                    k: Math.random() < 0.6 ? 0 : (Math.random() < 0.7 ? 1 : 2),
-                    al: 0.45 + Math.random() * 0.55
+                    s: Math.random() < 0.05 ? 2 + Math.random() * 1.6 : 0.7 + Math.random() * 1.1,
+                    k: Math.random() < 0.65 ? 0 : (Math.random() < 0.8 ? 1 : 2),
+                    al: 0.5 + Math.random() * 0.5
                 });
             }
 
             let W, H, dpr;
+            // sample the word's pixels and hand one to each particle
+            function build() {
+                const fs = W < 768 ? W * 0.34 : Math.min(W * 0.2, H * 0.34, 300);
+                const ow = Math.ceil(fs * 3.2), oh = Math.ceil(fs * 1.6);
+                const oc = document.createElement('canvas'); oc.width = ow; oc.height = oh;
+                const o = oc.getContext('2d');
+                o.font = `700 ${fs}px "Space Grotesk", "Inter", sans-serif`;
+                o.textAlign = 'center'; o.textBaseline = 'middle'; o.fillStyle = '#fff';
+                o.fillText(WORD, ow / 2, oh / 2);
+                const d = o.getImageData(0, 0, ow, oh).data, pts = [];
+                let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+                for (let y = 0; y < oh; y += 2) for (let x = 0; x < ow; x += 2) {
+                    if (d[(y * ow + x) * 4 + 3] > 128) {
+                        pts.push([x, y]);
+                        if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+                    }
+                }
+                if (!pts.length) return;
+                const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;   // centre the ink exactly
+                for (let i = pts.length - 1; i > 0; i--) {       // shuffle -> even density
+                    const j = (Math.random() * (i + 1)) | 0; [pts[i], pts[j]] = [pts[j], pts[i]];
+                }
+                let n = 0;
+                for (const q of P) {
+                    if (q.amb) continue;
+                    const p = pts[n % pts.length], extra = n >= pts.length ? 1.6 : 0;
+                    q.tx = p[0] - mx + (Math.random() - 0.5) * extra;
+                    q.ty = p[1] - my + (Math.random() - 0.5) * extra;
+                    n++;
+                }
+            }
+
             function resize() {
                 dpr = Math.min(window.devicePixelRatio || 1, 2);
                 W = canvas.clientWidth; H = canvas.clientHeight;
                 canvas.width = W * dpr; canvas.height = H * dpr;
+                build();
             }
             window.addEventListener('resize', resize);
             resize();
+            if (document.fonts && document.fonts.load) {
+                document.fonts.load('700 100px "Space Grotesk"').then(build);   // rebuild once the real font is in
+            }
 
             const mouse = { x: -9999, y: -9999 };
             window.addEventListener('pointermove', e => {
@@ -762,73 +795,57 @@
             function frame(now) {
                 requestAnimationFrame(frame);
                 const rect = hero.getBoundingClientRect();
-                if (rect.bottom < 0) return;                       // hero off-screen: skip work
+                if (rect.bottom < 0) return;
 
                 const time = (now - start) / 1000;
                 const intro = reduce ? 1 : clamp((now - start) / 3400);
                 const p = clamp(-rect.top / (rect.height - window.innerHeight));
-                const t = smooth(0.14, 0.62, p);                   // 0 = galaxy, 1 = dispersed
-                const g = easeIO(intro) * (1 - t);                  // how "formed" the galaxy is
+                const t = smooth(0.14, 0.62, p);                   // 0 = word, 1 = dispersed
+                const g = easeIO(intro) * (1 - t);                  // how "formed" the word is
 
-                const cx = W / 2, cy = H / 2 - t * H * 0.1;
-                const R = Math.min(W, H) * (W < 768 ? 0.4 : 0.36) * (1 - 0.3 * t);
-                const swirl = (1 - g) * 2.4;                        // twist while forming / dispersing
+                const cx = W / 2, cy = H / 2 - t * H * 0.08;
 
                 ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
                 ctx.globalCompositeOperation = 'source-over';
                 ctx.clearRect(0, 0, W, H);
                 ctx.globalCompositeOperation = 'lighter';
 
-                // bright core glow
-                if (g > 0.02) {
-                    const cr = R * 0.24;
-                    const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, cr);
-                    grd.addColorStop(0, `rgba(255,255,255,${0.95 * g})`);
-                    grd.addColorStop(0.3, `rgba(190,215,255,${0.35 * g})`);
-                    grd.addColorStop(1, 'rgba(120,160,255,0)');
-                    ctx.fillStyle = grd; ctx.fillRect(cx - cr, cy - cr, cr * 2, cr * 2);
-                }
-
                 for (let i = 0; i < N; i++) {
                     const q = P[i];
-                    // galaxy target: differential rotation + slow "breathing" warp
-                    const ang = q.a + time * (reduce ? 0 : 0.16 / (0.35 + q.r)) + swirl + q.jit * 12;
-                    const warp = Math.sin(time * 0.55 + q.a * 1.6 + q.r * 5) * 0.09 * q.r;
-                    const rad = (q.r + warp) * R;
-                    const gx = cx + Math.cos(ang) * rad;
-                    const gy = cy + Math.sin(ang) * rad;
-
-                    // scattered target: gentle drift across the viewport
                     const dx = q.sx * W + Math.sin(time * 0.3 + q.ph) * 14;
                     const dy = q.sy * H + Math.cos(time * 0.25 + q.ph) * 14;
+                    let x = dx, y = dy;
 
-                    let x = dx + (gx - dx) * g;
-                    let y = dy + (gy - dy) * g;
+                    if (!q.amb) {
+                        const l = smooth(q.dl, q.dl + 0.6, g);
+                        const a = (1 - l) * 2.4, ca = Math.cos(a), sa = Math.sin(a);   // twist while gathering
+                        const gx = cx + q.tx * ca - q.ty * sa + Math.sin(time * 1.3 + q.ph) * 0.9;
+                        const gy = cy + q.tx * sa + q.ty * ca + Math.cos(time * 1.1 + q.ph) * 0.9;
+                        x = dx + (gx - dx) * l;
+                        y = dy + (gy - dy) * l;
+                    }
 
-                    // pointer repel
+                    // pointer repel: stars scatter, then settle back
                     const mx = x - mouse.x, my = y - mouse.y, d2 = mx * mx + my * my;
-                    if (d2 < 16900) {
-                        const d = Math.sqrt(d2) || 1, f = Math.pow(1 - d / 130, 2) * 46;
+                    if (d2 < 19600) {
+                        const d = Math.sqrt(d2) || 1, f = Math.pow(1 - d / 140, 2) * 54;
                         x += (mx / d) * f; y += (my / d) * f;
                     }
 
                     const tw = 0.8 + 0.2 * Math.sin(time * 1.6 + q.ph * 3);
                     const sc = W < 768 ? 0.85 : 1;
-                    const a = q.al * tw * (0.35 + 0.65 * Math.max(intro, 0.3));
-                    // faint halo (small, so it never blurs the star)
-                    const halo = q.s * 2.6 * sc;
-                    ctx.globalAlpha = a * 0.28;
+                    const al = q.al * tw * (0.35 + 0.65 * Math.max(intro, 0.3));
+                    const halo = q.s * 2.2 * sc;
+                    ctx.globalAlpha = al * 0.2;
                     ctx.drawImage(sprites[q.k], x - halo, y - halo, halo * 2, halo * 2);
-                    // crisp, sharp-edged core
-                    ctx.globalAlpha = a;
+                    ctx.globalAlpha = al;
                     ctx.fillStyle = cores[q.k];
                     ctx.beginPath();
-                    ctx.arc(x, y, (0.55 + q.s * 0.42) * sc, 0, 6.2832);
+                    ctx.arc(x, y, (0.55 + q.s * 0.4) * sc, 0, 6.2832);
                     ctx.fill();
                 }
                 ctx.globalAlpha = 1;
 
-                // text choreography
                 const wOp = smooth(0.55, 1, intro) * (1 - smooth(0.08, 0.3, p));
                 wordL.style.opacity = wordR.style.opacity = wOp;
                 const cOp = smooth(0.5, 0.78, p);
